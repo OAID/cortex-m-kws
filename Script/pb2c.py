@@ -48,8 +48,8 @@ def header_file_comment_info(header_file):
     header_file.write(" \n")
     header_file.write(" \n")
     header_file.write("\n")
-    header_file.write("#ifndef __TINY_GRAPH_GENERATED_H__\n")
-    header_file.write("#define __TINY_GRAPH_GENERATED_H__\n")
+    header_file.write("#ifndef __TINY_PARAM_GENERATED_H__\n")
+    header_file.write("#define __TINY_PARAM_GENERATED_H__\n")
 
 def C_code_file_comment_info(c_file):
     c_file.write("/*\n")
@@ -166,8 +166,8 @@ def get_ops_from_pb_and_write_h(graph):
 #                 with open('model.h','ab') as ff:
 #                    np.savetxt(ff,text,fmt='%d',delimiter=', ',newline=', ')
                  for idx,value in enumerate(text):   
-                    if idx%20==0:
-                        wh.write(" \n") 
+#                    if idx%20==0:
+#                        wh.write("\\ \r") 
                     wh.write("%d ,"% value) 
                 
                  wh.seek(-1,1)
@@ -185,7 +185,7 @@ def get_ops_from_pb_and_write_h(graph):
                 continue;
             name = node.name.replace('/','_')
             if node.op == 'Const':
-                wh.write("\nstatic const int8_t %s_data[] = %s_DATA;\n"% (name ,name.upper()))
+                wh.write("\nstatic const signed char %s_data[] = %s_DATA;\n"% (name ,name.upper()))
     
         wh.write("\n")
         wh.write("\n")
@@ -317,10 +317,6 @@ def get_ops_from_pb(graph , save_ori_network=True):
                     w.write("           .pad_w = NN_PAD_VALID,\n" )
                     w.write("           .activation = -1,\n")
                     w.write("};\n\n")
-                else :
-                    if op.type != 'Const' and op.type != 'Identity' and op.type != 'FakeQuantWithMinMaxVars' :
-                        w.write("static const struct tiny_param %s_param ={\n" % op.name)
-                        w.write("};\n\n")
                    
                     
 
@@ -348,8 +344,11 @@ def get_ops_from_pb(graph , save_ori_network=True):
                     ##############################
                     w.write("           .output_num = %d,\n" % len(op.outputs))
                     w.write("           .op_type = NN_OP_%s,\n" % str(op.type).upper())
-                    w.write("           .op_ver = NN_OP_VERSION1,\n")
-                    w.write("           .op_param = &%s_param,\n" % op.name)
+                    w.write("           .op_ver = NN_OP_VERSION_1,\n")
+                    if op.type == 'Conv2D' or op.type == 'MaxPool' or op.type == 'AvgPool':
+                        w.write("           .op_param = &%s_param,\n" % op.name)
+                    else :
+                        w.write("           .op_param = NULL,\n")
                     ### input tensor
                     if  len(op.inputs) == 0:
                         w.write("           .input = NULL,\n")
@@ -396,10 +395,10 @@ def get_ops_from_pb(graph , save_ori_network=True):
             
 ############################# graph structure#############################################
             w.write("static const struct tiny_graph tiny_graph ={\n")
-            w.write("          .name = %s,\n" % graph_name )
+            w.write("          .name = \"%s\",\n" % graph_name )
             w.write("          .tiny_version = NN_TINY_VERSION_1,\n")
             w.write("          .nn_id = 0xdeadbeaf,\n")
-            w.write("          .create_time = %s,\n" % datetime.datetime.now().strftime("%Y_%m_%d"))
+            w.write("          .create_time = %s,\n" % datetime.datetime.now().strftime("%Y%m%d"))
             w.write("          .layout = NN_LAYOUT_NHWC,\n")
             w.write("          .node_num = sizeof(node_list) / sizeof(void*),\n")
             w.write("          .node_list = node_list,\n")
