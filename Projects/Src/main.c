@@ -147,7 +147,7 @@ int main(void)
 	}
 	
 	
-	for(int i=0; i<6; i++)
+	for(int i=0; i<3; i++)
 	{
 		memset(mfcc_features, 0, 990);
 		char file_name[20];
@@ -204,12 +204,9 @@ int main(void)
 		score[0]=1;
 		score[1]=1;
 		
-		printf("\nTengine Test: %s \n",file_name);
-
-		
+		printf("\nTengine test file: %s \n",file_name);		
 		char * tscore=tengine_test_run(mfcc_features,990);
-		
-		printf("tengine score = %d %d\n", score[0],score[1]);
+		printf("Tengine score = %d %d\n", score[0],score[1]);
 
 		
 		char output_info[100];
