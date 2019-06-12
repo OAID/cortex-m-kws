@@ -137,7 +137,7 @@ def get_shift_value(graph ,  write_file ):
 
 
 def get_ops_from_pb_and_write_h(graph):
-    with open('model.h','w+') as wh:
+    with open('tiny_param_generated.h','w+') as wh:
         header_file_comment_info(wh)
 
         print("Tensor name : ")
@@ -194,7 +194,7 @@ def get_ops_from_pb_and_write_h(graph):
 def get_ops_from_pb(graph , save_ori_network=True):
     if save_ori_network:
 #        with open('ori_network.txt','w+') as w: 
-        with open('model.c','w+') as w: 
+        with open('tiny_graph_generated.c','w+') as w: 
             OPS=graph.get_operations()
             C_code_file_comment_info(w)
             for op in OPS:
@@ -233,7 +233,10 @@ def get_ops_from_pb(graph , save_ori_network=True):
                         w.write("           .dim_num = %d,\n" % len(input_tensor.shape))
                         w.write("           .dims = { ")
                         for dim_value in input_tensor.shape.as_list() :
-                            w.write("%s," % dim_value)
+                            if dim_value == None :
+                                w.write("1,")
+                            else :
+                                w.write("%s," % dim_value)
                         w.seek(-1,1)
                         w.write("},\n")
                         # shift value 
@@ -259,7 +262,10 @@ def get_ops_from_pb(graph , save_ori_network=True):
                  w.write("           .dim_num = %d\n" % len(output_tensor.shape))
                  w.write("           .dims = { ")
                  for dim_value in output_tensor.shape.as_list() :
-                     w.write("%s," % dim_value)
+                     if dim_value == None :
+                        w.write("1,")
+                     else :
+                        w.write("%s," % dim_value)
                  w.seek(-1,1)
                  w.write("},\n")
                  w.write("           .shift = 0,\n")
