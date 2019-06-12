@@ -52,6 +52,9 @@
 
 # Debugger Files
 *.INI
+*/DebugConfig
+*/RTE
+*/STM32F769I-Discovery
 
 # Other Files
 *.BUILD_LOG.HTM
