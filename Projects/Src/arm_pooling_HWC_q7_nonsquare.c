@@ -100,7 +100,7 @@
 
 
 void
-arm_maxpool_HWC_q7_nonsquare(q7_t * Im_in,
+arm_maxpool_q7_HWC_nonsquare(q7_t * Im_in,
                    const uint16_t dim_im_in_x,
 				   const uint16_t dim_im_in_y,
                    const uint16_t ch_im_in,
