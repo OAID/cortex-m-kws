@@ -885,11 +885,6 @@
               <FileType>1</FileType>
               <FilePath>..\..\tengine-lite\tests\bin\tiny\tiny_graph_generated.c</FilePath>
             </File>
-            <File>
-              <FileName>stm32f7_test.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\tengine-lite\tests\bin\tiny\stm32f7_test.c</FilePath>
-            </File>
           </Files>
         </Group>
         <Group>

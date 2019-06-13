@@ -47,9 +47,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "mfcc.h"
+#include "tengine_c_api.h"
+
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
+#define FILE_NUM				3
 #define OUT_DIM 				2
 #define SAMP_FREQ 			8000
 #define FRAME_SHIFT_MS 	20
@@ -65,28 +68,23 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-FATFS SD_FatFs;  /* File system object for SD card logical drive */
-char SD_Path[4]; /* SD card logical drive path */
-char* pDirectoryFiles[MAX_BMP_FILES];
+static const struct tiny_graph* tiny_graph;
+FATFS fatfs;
+
 char *word_list[] = {"unkown","xiaozhi"};
 char mfcc_features[990];
-short pcm_data[320];
-FATFS fatfs;
-FIL wav_file, conf_file;
-/* Internal Buffer defined in SDRAM memory */
-uint8_t *uwInternalBuffer;
 
 /* Private function prototypes -----------------------------------------------*/
-static void LCD_Config(void);
-static void SystemClock_Config(void);
-static void Error_Handler(void);
-static void CPU_CACHE_Enable(void);;
-int tengine_test_init(void * output_buf,int output_size);
-void *tengine_test_run(const void * input, int input_size);
-void tengine_test_free(void);
-void dump_mem_stat(void);	
+extern const struct tiny_graph* get_tiny_graph(void);
+extern void free_tiny_graph(const struct tiny_graph*);
+static void system_config(void);
+static int get_mfcc_feature(char* file_name ,char* features );
 
 /* Private functions ---------------------------------------------------------*/
+static void log_func(const char* info)
+{
+	printf("%s",info);
+}
 
 
 /**
@@ -95,68 +93,129 @@ void dump_mem_stat(void);
   * @retval None
   */
 int main(void)
-{
-  uint32_t counter = 0, transparency = 0;
-  uint8_t str[30];
-  uwInternalBuffer = (uint8_t *)INTERNAL_BUFFER_START_ADDRESS;
-  
-  /* Enable the CPU Cache */
-  CPU_CACHE_Enable();
-  
-  /* STM32F7xx HAL library initialization:
-       - Configure the Flash ART accelerator on ITCM interface
-       - Configure the Systick to generate an interrupt each 1 msec
-       - Set NVIC Group Priority to 4
-       - Global MSP (MCU Support Package) initialization
-     */
-  HAL_Init();
+{	
+		//system config : cpu , hal , clock ,lcd , led ,etc 
+		system_config();
+		// mfcc init 
+		MFCC_init();
+	
+		char score[OUT_DIM];
 
-  /* Configure the system clock to 180 MHz */
-  SystemClock_Config();
+		//Step 0, init tengine 
+		init_tengine();
 
-  /* Configure LED2 */
-  BSP_LED_Init(LED2);
+		set_log_output(log_func);
 
-  /*##-1- Configure LCD ######################################################*/
-  LCD_Config();
-
-  /*##-2- Link the SD Card disk I/O driver ###################################*/
-  if(FATFS_LinkDriver(&SD_Driver, SD_Path) == 0)
-  {
-		/* Open filesystem */
-    if(f_mount(&fatfs, (TCHAR const*)"",1) != FR_OK)
+		//step 1 , check the tengine version 
+    if(request_tengine_version("1.0") < 0){
+				printf("tengine version %s is not supported \n", get_tengine_version());				
+				return -1;
+		}
+		printf("run-time library version: %s\n", get_tengine_version());
+    
+		//step 2 , get the model structure data
+		tiny_graph = get_tiny_graph();
+    
+		//step 3 , create the graph 
+    graph_t graph = create_graph(NULL, "tiny", ( void* )tiny_graph);
+    if(graph == NULL)
     {
-      printf("failed to mount file system!\n");
+        printf("create graph from tiny model failed\n");
+        return -1;
     }
-  }
-  else
-  {
-    /* FatFs Initialization Error */
-    Error_Handler();
-  }
+
+		//step 4, bond the output buffer to score with output tensor
+    tensor_t output_tensor = get_graph_output_tensor(graph, 0, 0);
+    int size = get_tensor_buffer_size(output_tensor);
+    if(size != OUT_DIM)
+    {
+        printf("bad output size\n");
+        return -1;
+    }
+    set_tensor_buffer(output_tensor, score, OUT_DIM);
+    release_graph_tensor(output_tensor);
+
+		//step 5 , prerun graph 
+    if(prerun_graph(graph)<0)
+		{
+        printf("prerun graph failed\n");
+        return -1;			
+		}
+		
+		//step 6 , Run the graph for each wav file 
+		for(int i=0; i<FILE_NUM; i++)
+		{
+			//step 6.1, get the mfcc feature data
+			memset(mfcc_features, 0, sizeof(mfcc_features)/sizeof(char));
+			char file_name[20];
+			sprintf(file_name, "%d.wav", i);
+			if(get_mfcc_feature(file_name ,mfcc_features )<0)
+				continue ;
+	
+			score[0]=1;
+			score[1]=1;
+		
+			printf("\nTengine test file: %s \n",file_name);		
+	
+			//step6.2 set the input data
+			tensor_t input_tensor = get_graph_input_tensor(graph, 0, 0);
+			if(set_tensor_buffer(input_tensor, ( void* )mfcc_features, sizeof(mfcc_features)/sizeof(char)) < 0)
+			{
+        printf("set input tensor buffer failed\n");
+        return NULL;
+			}
+			//step 6.3 run graph
+			if(run_graph(graph, 1) < 0)
+			{
+        printf("run graph failed\n");
+        return NULL;
+			}
+			//step 6.4 get the output result via output tensor
+			int word_idx=score[0]>score[1]?0:1;
+			printf("Tengine score = %d %d, Speech words = %s \n", score[0],score[1],word_list[word_idx] );
+		
+			//step 6.5 release the tensor resources 
+			release_graph_tensor(input_tensor);
+		}
+
+		//Step 7 , free the resources 
+	  printf("FREE RESOURCE DONE\n");
+    postrun_graph(graph);
+    destroy_graph(graph);
+    free_tiny_graph(tiny_graph);
+    release_tengine();
+    printf("ALL TEST DONE\n");
 
 	
-	char score[OUT_DIM];
-	tengine_test_init(score,2);
-	MFCC_init();
-	FRESULT ret = f_open (&conf_file, "conf.txt", FA_CREATE_ALWAYS|FA_WRITE);
-	if(ret != FR_OK)
-	{
-		printf("failed to open conf_list.txt, ret=%d\n", ret);
-		goto exit;
-	}
+  /* Main infinite loop */
+  while(1)
+  {
+		/* Insert a 1s delay */
+    HAL_Delay(1000);
+    
+    /* Toggle LED2 */
+    BSP_LED_Toggle(LED2);
+  }
+}
+
+
+
+/**
+  * @brief  get_mfcc_feature
+  * @param  file name : input wav file name 
+  *					feature   : output result 
+  * @retval error code 
+  */
+int get_mfcc_feature(char* file_name ,char* features )
+{
+		FIL wav_file;
+		short pcm_data[320];
 	
-	
-	for(int i=0; i<3; i++)
-	{
-		memset(mfcc_features, 0, 990);
-		char file_name[20];
-		sprintf(file_name, "%d.wav", i);
 		FRESULT ret = f_open (&wav_file, file_name, FA_READ);
 		if(ret != FR_OK)
 		{
 			printf("failed to open %s, ret=%d\n", file_name, ret);
-			continue;
+			return -1;
 		}
 		
 		UINT readed_len = 0;
@@ -177,8 +236,6 @@ int main(void)
 		}
 		//printf("failed to read 0");
 		int mfcc_index = 0;
-	
-
 		for(int j=0; j<99; j++)
 		{
 			if(f_read (&wav_file, pcm_data+320-FRAME_SHIFT, FRAME_SHIFT*2, &readed_len) != FR_OK)
@@ -186,56 +243,14 @@ int main(void)
 				memset(pcm_data+320-FRAME_SHIFT, 0, FRAME_SHIFT*2);
 			}
 			
-			MFCC_mfcc_compute(pcm_data, 0, &mfcc_features[mfcc_index]);
+			MFCC_mfcc_compute(pcm_data, 0, &features[mfcc_index]);
 			memmove(pcm_data, pcm_data+FRAME_SHIFT, FRAME_SHIFT*2);
 			mfcc_index += 10;
 
 	  }
 		f_close(&wav_file);
-
 		
-		int wakeup_index = 0;
-		if(score[0] < score[1])
-		{
-			wakeup_index = 1;
-		}
-
-		
-		score[0]=1;
-		score[1]=1;
-		
-		printf("\nTengine test file: %s \n",file_name);		
-		char * tscore=tengine_test_run(mfcc_features,990);
-		printf("Tengine score = %d %d\n", score[0],score[1]);
-
-		
-		char output_info[100];
-		sprintf(output_info, "%s Conf: ", file_name);
-		UINT wirte_len = 0;
-		f_write(&conf_file, output_info, strlen(output_info), &wirte_len);
-		for(int i=0; i<OUT_DIM; i++)
-		{
-			sprintf(output_info, "%s=[%d], ", word_list[i], score[i]);
-			f_write(&conf_file, output_info, strlen(output_info), &wirte_len);
-		}
-		f_write(&conf_file, "\n", 1, &wirte_len);
-		f_sync(&conf_file);	
-		memset(score, 0, 2);
-
-  }
-exit:
-	
-	tengine_test_free();
-	
-  /* Main infinite loop */
-  while(1)
-  {
-		/* Insert a 1s delay */
-    HAL_Delay(1000);
-    
-    /* Toggle LED2 */
-    BSP_LED_Toggle(LED2);
-  }
+		return 0 ;
 }
 
 /**
@@ -366,6 +381,48 @@ static void SystemClock_Config(void)
     while(1) { ; }
   }
 }
+
+
+void system_config(void)
+{
+	  /* Enable the CPU Cache */
+  CPU_CACHE_Enable();
+  
+  /* STM32F7xx HAL library initialization:
+       - Configure the Flash ART accelerator on ITCM interface
+       - Configure the Systick to generate an interrupt each 1 msec
+       - Set NVIC Group Priority to 4
+       - Global MSP (MCU Support Package) initialization
+     */
+  HAL_Init();
+
+  /* Configure the system clock to 180 MHz */
+  SystemClock_Config();
+
+  /* Configure LED2 */
+  BSP_LED_Init(LED2);
+
+  /*##-1- Configure LCD ######################################################*/
+  LCD_Config();
+
+  /*##-2- Link the SD Card disk I/O driver ###################################*/
+	char SD_Path[4]; /* SD card logical drive path */
+  if(FATFS_LinkDriver(&SD_Driver, SD_Path) == 0)
+  {
+		/* Open filesystem */
+    if(f_mount(&fatfs, (TCHAR const*)"",1) != FR_OK)
+    {
+      printf("failed to mount file system!\n");
+    }
+  }
+  else
+  {
+    /* FatFs Initialization Error */
+    Error_Handler();
+  }
+
+}
+
 
 #ifdef  USE_FULL_ASSERT
 /**
