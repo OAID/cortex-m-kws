@@ -259,7 +259,7 @@ def get_ops_from_pb(graph , save_ori_network=True):
             output_tensors = OPS[-1].outputs
             for output_tensor in output_tensors:
                  w.write("static const struct tiny_tensor %s ={\n" %str(output_tensor.name).replace(':','_').replace('/','_') )
-                 w.write("           .dim_num = %d\n" % len(output_tensor.shape))
+                 w.write("           .dim_num = %d,\n" % len(output_tensor.shape))
                  w.write("           .dims = { ")
                  for dim_value in output_tensor.shape.as_list() :
                      if dim_value == None :
