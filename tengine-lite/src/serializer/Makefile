@@ -1,0 +1,3 @@
+obj-$(CONFIG_TENGINE_SERIALIZER)+=tm/
+obj-$(CONFIG_TINY_SERIALIZER)+=tiny/
+
